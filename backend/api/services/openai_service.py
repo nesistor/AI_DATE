@@ -139,6 +139,7 @@ def process_document_with_text_model(aggregated_results: list) -> dict:
 def generate_response(request: dict) -> str:
     """
     Generates a response based on the user's request and interaction.
+    Focuses on understanding user preferences, characteristics, and needs.
     """
     base_messages = [
         {
@@ -197,26 +198,11 @@ def generate_response(request: dict) -> str:
         # Extract the first response from the chat model
         initial_message = response.choices[0].message
 
-        # Check if the user's query involves document-related topics
-        requires_document = any(keyword in request['question'].lower() for keyword in ["form", "document", "application", "download"])
-
-        # If documents are relevant, prepare document links HTML
-        document_links_html = ""
-        if requires_document:
-            for doc_key, doc_info in DOCUMENTS_DB.items():
-                document_links_html += f'<p><a href="{doc_info["url"]}" download="{doc_info["document_name"]}">{doc_info["document_name"]}</a></p>'
-
-        # Create an interactive response depending on the context
-        if requires_document:
-            grok_response = (
-                f"Sure thing! It sounds like you need some official documents. Here are the ones I think will help you: "
-                f"{document_links_html} Let me know if you'd like help filling them out or understanding what to do next!"
-            )
-        else:
-            grok_response = (
-                f"Great question! {initial_message.content} "
-                f"If at any point you think a DMV document might help, just let me know!"
-            )
+        # Focus on analyzing and understanding user characteristics and needs
+        grok_response = (
+            f"Thank you for sharing! {initial_message.content} "
+            f"Let's dive deeper into what you're looking for and how I can assist further."
+        )
 
         # Prepare follow-up messages for continued conversation
         follow_up_messages = base_messages + [initial_message, {"role": "assistant", "content": grok_response}]
@@ -234,3 +220,21 @@ def generate_response(request: dict) -> str:
     except Exception as e:
         logger.error(f"Error generating response: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error processing the request: {str(e)}")
+
+def extract_characteristics_with_grok(text: str) -> list:
+    """
+    Calls Grok to extract user characteristics from the given text.
+    Focuses on personal preferences, emotions, and self-described traits.
+    """
+    try:
+        # This is a placeholder; replace with your actual Grok API call
+        grok_response = client.grok.completions.create(
+            model="grok-text-model",  # Replace with the actual Grok model name
+            prompt=f"Extract the user's characteristics from this text: {text}",
+        )
+        # Assuming Grok returns a JSON with a "characteristics" field
+        characteristics = json.loads(grok_response.choices[0].message.content)['characteristics']
+        return characteristics
+    except Exception as e:
+        logger.error(f"Error extracting characteristics with Grok: {str(e)}")
+        return []
