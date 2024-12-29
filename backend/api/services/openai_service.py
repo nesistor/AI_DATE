@@ -12,6 +12,12 @@ client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
 
 logger = logging.getLogger(__name__)
 
+# MongoDB connection
+MONGO_URI = os.getenv("MONGO_URI")  # You can set your MongoDB URI in environment variables
+mongo_client = MongoClient(MONGO_URI)
+db = mongo_client["user_database"]  # Select the database
+users_collection = db["users"]
+
 def process_image_with_grok(base64_image: str) -> dict:
     try:
         logger.debug("Sending request to Grok Vision model.")
@@ -144,7 +150,7 @@ def generate_response(request: dict) -> str:
     base_messages = [
         {
             "role": "system",
-            "content": """As a creative assistant in the partner matching process, 
+            "content": """As a funny and creative assistant in the partner matching process, 
                        the language model can check many things during a conversation with 
                        a client to best understand their needs and preferences. Here are some examples:
 
@@ -221,20 +227,93 @@ def generate_response(request: dict) -> str:
         logger.error(f"Error generating response: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error processing the request: {str(e)}")
 
-def extract_characteristics_with_grok(text: str) -> list:
+def save_characteristics_to_db(user_id: str, characteristics: dict) -> None:
     """
-    Calls Grok to extract user characteristics from the given text.
-    Focuses on personal preferences, emotions, and self-described traits.
+    Saves a user's characteristics to MongoDB.
+    
+    :param user_id: User's ID
+    :param characteristics: Dictionary containing the user's characteristics
     """
     try:
-        # This is a placeholder; replace with your actual Grok API call
-        grok_response = client.grok.completions.create(
-            model="grok-text-model",  # Replace with the actual Grok model name
-            prompt=f"Extract the user's characteristics from this text: {text}",
-        )
-        # Assuming Grok returns a JSON with a "characteristics" field
-        characteristics = json.loads(grok_response.choices[0].message.content)['characteristics']
-        return characteristics
+        # Check if the user already exists
+        user = users_collection.find_one({"user_id": user_id})
+        
+        if user:
+            # If the user exists, update their data
+            users_collection.update_one(
+                {"user_id": user_id},
+                {"$set": {"characteristics": characteristics}}
+            )
+        else:
+            # If the user doesn't exist, insert a new document
+            users_collection.insert_one({"user_id": user_id, "characteristics": characteristics})
+        
+        logger.debug(f"Successfully saved characteristics for user {user_id}")
     except Exception as e:
-        logger.error(f"Error extracting characteristics with Grok: {str(e)}")
-        return []
+        logger.error(f"Error saving characteristics to DB: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error saving characteristics to DB: {str(e)}")
+
+def get_characteristics_from_db(user_id: str) -> dict:
+    """
+    Retrieves a user's characteristics from MongoDB.
+    
+    :param user_id: User's ID
+    :return: Dictionary containing the user's characteristics
+    """
+    try:
+        user = users_collection.find_one({"user_id": user_id})
+        if user:
+            return user.get("characteristics", {})
+        else:
+            logger.warning(f"User {user_id} not found in database.")
+            return {}
+    except Exception as e:
+        logger.error(f"Error retrieving characteristics from DB: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error retrieving characteristics from DB: {str(e)}")
+
+def match_users(user1_id: str, user2_id: str) -> dict:
+    """
+    Compares the characteristics of two users based on their data from MongoDB.
+    
+    :param user1_id: ID of the first user
+    :param user2_id: ID of the second user
+    
+    :return: Dictionary with the comparison results
+    """
+    try:
+        # Get the characteristics of the users from the database
+        user1_characteristics = get_characteristics_from_db(user1_id)
+        user2_characteristics = get_characteristics_from_db(user2_id)
+        
+        if not user1_characteristics or not user2_characteristics:
+            raise HTTPException(status_code=404, detail="One or both users do not have stored characteristics.")
+        
+        # Combine the characteristics of both users into a single comparison text
+        comparison_text = f"""
+        User 1 Characteristics: {json.dumps(user1_characteristics)}
+        User 2 Characteristics: {json.dumps(user2_characteristics)}
+        Please compare these two sets of characteristics and determine their compatibility 
+        in different areas like personality, lifestyle, and physical traits. Provide a score 
+        (0-100) for each category and an overall compatibility score.
+        """
+        
+        # Make the request to the Grok model
+        response = client.chat.completions.create(
+            model=CHAT_MODEL_NAME,
+            messages=[
+                {"role": "system", "content": "You are an expert matchmaker who analyzes users' characteristics and finds compatibility."},
+                {"role": "user", "content": comparison_text}
+            ]
+        )
+
+        # Extract the comparison result
+        matching_result = response.choices[0].message.content
+        logger.debug(f"Matching result: {matching_result}")
+        
+        # Assuming the response from Grok is in JSON format, parse the result
+        match_details = json.loads(matching_result)
+        return match_details
+    
+    except Exception as e:
+        logger.error(f"Error matching users: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error matching users: {str(e)}")
