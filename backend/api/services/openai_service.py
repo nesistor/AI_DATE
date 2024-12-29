@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 def process_image_with_grok(base64_image: str) -> dict:
     try:
         logger.debug("Sending request to Grok Vision model.")
+
         response = client.chat.completions.create(
             model=VISION_MODEL_NAME,
             messages=[
@@ -25,35 +26,49 @@ def process_image_with_grok(base64_image: str) -> dict:
                             "type": "image_url",
                             "image_url": {
                                 "url": f"data:image/jpeg;base64,{base64_image}",
-                                "detail": "high",  # Image detail level
-                            },
+                                "detail": "high"
+                            }
                         },
                         {
                             "type": "text",
                             "text": (
-                                "Analyze this document and extract all fields. Split the output into two categories: "
-                                "'completed_fields' and 'empty_fields'. For 'completed_fields', include the "
-                                "'field_name' and the 'field_value'. For 'empty_fields', include only the 'field_name'. "
-                                "Additionally, identify and validate required fields, and include their statuses (e.g., "
-                                "'filled' or 'missing') in the response. Return the results in a clear JSON format "
-                                "structured as follows:\n{\n  \"completed_fields\": [\n    { \"field_name\": \"<field_label>\", "
-                                "\"field_value\": \"<value_entered>\" }\n  ],\n  \"empty_fields\": [\n    { \"field_name\": "
-                                "\"<field_label>\" }\n  ],\n  \"required_field_statuses\": [\n    { \"field_name\": "
-                                "\"<field_label>\", \"status\": \"filled\" or \"missing\" }\n  ]\n}\n\nPlease note that the "
-                                "'X' next to the 'Signature of Applicant' label indicates the location where the applicant is "
-                                "required to sign. It does not mean that the signature has already been provided or that any "
-                                "information has been marked. The applicant must place their signature in the designated area "
-                                "to complete the form."
+                                "Analyze the provided image and extract detailed attributes of the person in the image. "
+                                "Categorize the output into distinct groups of physical features. Structure the response in JSON format with the following groups:\n\n"
+                                "1. \"face_shape\": Identify the face shape (e.g., oval, round, square, heart-shaped).\n"
+                                "2. \"hair_details\": Include hair color, texture (e.g., straight, wavy, curly), and length (short, medium, long).\n"
+                                "3. \"eye_details\": Include eye color, shape (e.g., almond, round, hooded).\n"
+                                "4. \"skin_tone\": Classify the skin tone (e.g., fair, medium, tan, dark).\n"
+                                "5. \"other_features\": Note distinctive features like freckles, moles, scars, or makeup (e.g., lipstick, eyeshadow).\n\n"
+                                "Return the results in the following JSON format:\n\n"
+                                "{\n"
+                                "  \"face_shape\": \"<value>\",\n"
+                                "  \"hair_details\": {\n"
+                                "    \"color\": \"<value>\",\n"
+                                "    \"texture\": \"<value>\",\n"
+                                "    \"length\": \"<value>\"\n"
+                                "  },\n"
+                                "  \"eye_details\": {\n"
+                                "    \"color\": \"<value>\",\n"
+                                "    \"shape\": \"<value>\"\n"
+                                "  },\n"
+                                "  \"skin_tone\": \"<value>\",\n"
+                                "  \"other_features\": [\"<value>\", \"<value>\"]\n"
+                                "}\n\n"
+                                "Additionally, allow users to describe desired features (face shape, hair color, eye color, etc.) and match these descriptions with identified attributes to suggest the closest matches. "
+                                "Provide the matching logic and confidence levels for each attribute."
                             )
                         }
                     ]
                 }
             ],
         )
+
         return response.choices[0].message
+
     except Exception as e:
         logger.error("Error processing image: %s", str(e))
         raise HTTPException(status_code=500, detail=f"Error processing image: {str(e)}")
+
 
 def process_document_with_text_model(aggregated_results: list) -> dict:
     document_context = " ".join([str(result) for result in aggregated_results])
@@ -128,11 +143,46 @@ def generate_response(request: dict) -> str:
     base_messages = [
         {
             "role": "system",
-            "content": "You are a funny, friendly, and incredibly knowledgeable assistant who works at the DMV. "
-                       "You are an expert in all DMV processes, forms, regulations, and problem-solving scenarios. "
-                       "Your job is to help users in a lighthearted, easy-to-understand, and supportive way. "
-                       "Explain complex processes in simple terms, use relatable analogies, and add a touch of humor to make DMV topics less stressful. "
-                       "Always stay polite, positive, and provide clear, actionable solutions to any DMV-related questions or issues."
+            "content": """As a creative assistant in the partner matching process, 
+                       the language model can check many things during a conversation with 
+                       a client to best understand their needs and preferences. Here are some examples:
+
+                       **Basic information:**
+                       * Age, gender, location: This is basic demographic information that will help 
+                         narrow down the pool of potential partners.
+                       * Sexual orientation: It is important to know the client's preferences in this regard.
+                       * Relationship status: Is the client single, widowed, divorced?
+                       * Education, profession: This information can provide insight into the client's lifestyle and aspirations.
+
+                       **Partner preferences:**
+                       * Age: Does the client have preferences regarding the age of the potential partner?
+                       * Physical appearance: Are there any specific features that the client finds attractive?
+                       * Personality: Is the client looking for someone extroverted, introverted, spontaneous, or rather calm?
+                       * Interests: Is the client looking for someone with similar interests, 
+                         or perhaps someone who will introduce them to new hobbies?
+                       * Values: Are there any values that are particularly important to the client in a relationship 
+                         (e.g., honesty, loyalty, family)?
+
+                       **Lifestyle and expectations:**
+                       * Physical activity: Is the client physically active and looking for a partner with a similar lifestyle?
+                       * Eating habits: Is the client a vegetarian, vegan, or do they have any food allergies?
+                       * Attitude towards alcohol, cigarettes: Does the client drink alcohol, smoke cigarettes, 
+                         and do they accept these habits in a partner?
+                       * Plans for the future: Is the client planning to start a family, travel, or focus on their career?
+
+                       **Additional aspects:**
+                       * Level of commitment: Is the client looking for a serious relationship or a casual acquaintance?
+                       * Past experiences: Has the client had any difficult experiences in previous relationships 
+                         that might affect their current expectations?
+                       * Openness to new experiences: Is the client open to meeting people from different backgrounds and cultures?
+
+                       The language model can also analyze the client's way of speaking to capture nuances and emotions 
+                       that can be helpful in finding the ideal partner. For example, tone of voice, choice of words, 
+                       and speaking rate can provide information about the client's temperament and personality.
+
+                       It is important that the language model asks questions in an empathetic and non-judgmental manner, 
+                       so that the client feels comfortable and free to share their thoughts and feelings.
+                       """
         }
     ]
     base_messages.append({"role": "user", "content": request['question']})

@@ -8,6 +8,7 @@ class DocumentCheckResult(BaseModel):
 
 class QuestionRequest(BaseModel):
     question: str
+    gender: str
 
 class DocumentRequest(BaseModel):
     document_type: str
