@@ -271,12 +271,15 @@ def get_characteristics_from_db(user_id: str) -> dict:
         logger.error(f"Error retrieving characteristics from DB: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error retrieving characteristics from DB: {str(e)}")
 
-def match_users(user1_id: str, user2_id: str) -> dict:
+        
+def match_users(user1_id: str, user2_id: str, user1_intentions: dict, user2_intentions: dict) -> dict:
     """
-    Compares the characteristics of two users based on their data from MongoDB.
+    Compares the characteristics and intentions of two users based on their data from MongoDB.
     
-    :param user1_id: ID of the first user
+    :param user1_id: ID of the first user (primary user)
     :param user2_id: ID of the second user
+    :param user1_intentions: Intentions or goals of the first user
+    :param user2_intentions: Intentions or goals of the second user
     
     :return: Dictionary with the comparison results
     """
@@ -288,20 +291,24 @@ def match_users(user1_id: str, user2_id: str) -> dict:
         if not user1_characteristics or not user2_characteristics:
             raise HTTPException(status_code=404, detail="One or both users do not have stored characteristics.")
         
-        # Combine the characteristics of both users into a single comparison text
+        # Combine the characteristics and intentions of both users into a single comparison text
         comparison_text = f"""
-        User 1 Characteristics: {json.dumps(user1_characteristics)}
+        User 1 (Primary) Characteristics: {json.dumps(user1_characteristics)}
+        User 1 (Primary) Intentions: {json.dumps(user1_intentions)}
+        
         User 2 Characteristics: {json.dumps(user2_characteristics)}
-        Please compare these two sets of characteristics and determine their compatibility 
-        in different areas like personality, lifestyle, and physical traits. Provide a score 
-        (0-100) for each category and an overall compatibility score.
+        User 2 Intentions: {json.dumps(user2_intentions)}
+        
+        Please analyze these two users based on their characteristics and intentions. 
+        Compare them in different areas like personality, lifestyle, goals, and physical traits. 
+        Provide a compatibility score (0-100) for each category and an overall compatibility score.
         """
         
-        # Make the request to the Grok model
+        # Make the request to the Grok model with an updated prompt including intentions
         response = client.chat.completions.create(
             model=CHAT_MODEL_NAME,
             messages=[
-                {"role": "system", "content": "You are an expert matchmaker who analyzes users' characteristics and finds compatibility."},
+                {"role": "system", "content": "You are an expert matchmaker who analyzes users' characteristics, intentions, and finds compatibility."},
                 {"role": "user", "content": comparison_text}
             ]
         )
